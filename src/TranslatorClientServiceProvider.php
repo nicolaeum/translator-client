@@ -26,9 +26,12 @@ class TranslatorClientServiceProvider extends ServiceProvider
         // Register the appropriate translator service based on mode
         $this->app->singleton(TranslatorServiceInterface::class, function ($app) {
             $cache = $app['cache']->store(config('translator-client.cache.driver', 'redis'));
-            $apiUrl = config('translator-client.cdn_url'); // CDN URL is the base
+            $baseCdnUrl = rtrim(config('translator-client.cdn_url'), '/');
             $apiKey = config('translator-client.api_key');
-            $cdnUrl = config('translator-client.cdn_url');
+
+            // Build full CDN URL with projects path
+            $cdnUrl = "{$baseCdnUrl}/projects/{$apiKey}";
+            $apiUrl = $baseCdnUrl;
 
             if (ModeDetector::shouldUseLiveMode()) {
                 return new LiveTranslatorService(

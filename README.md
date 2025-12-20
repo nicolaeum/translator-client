@@ -67,6 +67,7 @@ TRANSLATOR_VERIFY_CHECKSUMS=true
 - **TRANSLATOR_STORAGE_MODE**: Storage mode - `file` or `cache` (default: file)
 - **TRANSLATOR_CACHE_TTL**: Cache TTL in seconds when using cache mode (default: 3600)
 - **TRANSLATOR_VERIFY_CHECKSUMS**: Verify checksums after download (default: true)
+- **TRANSLATOR_SYNC_STRATEGY**: How to handle existing translations - `overwrite` or `merge` (default: overwrite)
 
 ## Usage
 
@@ -293,6 +294,99 @@ resources/lang/es/
 └── custom.php      ← Your custom translations (safe to edit)
 ```
 
+### Sync Strategies
+
+Control how the sync handles existing local translation files.
+
+#### Overwrite Mode (Default)
+
+```env
+TRANSLATOR_SYNC_STRATEGY=overwrite
+```
+
+Completely replaces local files with CDN versions. Use when:
+- Headwires Translator is your single source of truth
+- You don't have local-only translations
+- You want a clean sync every time
+
+#### Merge Mode
+
+```env
+TRANSLATOR_SYNC_STRATEGY=merge
+```
+
+Intelligently merges CDN translations with existing local files:
+- **CDN values take precedence** for keys that exist in both
+- **Local-only keys are preserved** (not deleted)
+- **Recursive merge** for nested arrays
+
+**Example:**
+```php
+// Local file before sync
+return [
+    'welcome' => 'Bienvenido',      // exists in both
+    'local_only' => 'Solo local',   // only exists locally
+];
+
+// CDN version
+return [
+    'welcome' => 'Welcome!',        // will overwrite local
+    'new_key' => 'From CDN',        // will be added
+];
+
+// Result after merge sync
+return [
+    'welcome' => 'Welcome!',        // from CDN (takes precedence)
+    'local_only' => 'Solo local',   // preserved from local
+    'new_key' => 'From CDN',        // added from CDN
+];
+```
+
+**Use merge mode when:**
+- You have environment-specific translations
+- You want to add local keys without losing them on sync
+- You're gradually migrating to Headwires Translator
+
+### Global Translations
+
+Global translations from Headwires Translator are automatically saved to a single `global.php` file, keeping them separate from project-specific translations.
+
+**File structure after sync:**
+```
+resources/lang/es/
+├── auth.php        ← Project translations
+├── messages.php    ← Project translations
+└── global.php      ← All global translations (grouped)
+```
+
+**Using global translations in your app:**
+```php
+// Global translations are accessed with 'global.' prefix
+{{ __('global.actions.save') }}      // "Guardar"
+{{ __('global.actions.cancel') }}    // "Cancelar"
+{{ __('global.buttons.submit') }}    // "Enviar"
+
+// Project translations work as usual
+{{ __('auth.login') }}               // "Iniciar sesión"
+```
+
+**Structure of global.php:**
+```php
+<?php
+
+return [
+    'actions' => [
+        'save' => 'Guardar',
+        'cancel' => 'Cancelar',
+        'delete' => 'Eliminar',
+    ],
+    'buttons' => [
+        'submit' => 'Enviar',
+        'reset' => 'Restablecer',
+    ],
+];
+```
+
 ### Cache Mode
 
 Translations stored in Laravel cache (faster but volatile):
@@ -500,6 +594,16 @@ Contributions are welcome! Please:
 - 📙 **[Migration Guide](./docs/MIGRATION-GUIDE.md)** - Migrate from static to live mode
 
 ## Changelog
+
+### Version 2.1.0 (2025-12-20)
+
+- ✨ **NEW: Sync Strategies** - Choose between `overwrite` and `merge` modes
+- 🔀 Merge mode preserves local-only translation keys during sync
+- 🔄 Recursive merge for nested translation arrays
+- 📝 CDN values take precedence in merge conflicts
+- 🌐 **NEW: Global Translations Support** - Global translations saved to `global.php`
+- 📦 Format v2: Structured JSON with project/global separation
+- ⬇️ Backwards compatible with v1 format
 
 ### Version 2.0.0 (2025-12-09)
 

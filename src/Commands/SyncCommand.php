@@ -91,7 +91,15 @@ class SyncCommand extends Command
 
     protected function saveToFiles(string $locale, array $translations): void
     {
-        // Group by file (first part of dot notation)
+        $basePath = config('translator-client.storage_path');
+
+        // Check if v2 format (has 'project' and/or 'global' keys)
+        if (isset($translations['project']) || isset($translations['global'])) {
+            $this->saveToFilesV2($locale, $translations, $basePath);
+            return;
+        }
+
+        // V1 format: Group by file (first part of dot notation)
         $grouped = [];
 
         foreach ($translations as $key => $value) {
@@ -106,29 +114,60 @@ class SyncCommand extends Command
         }
 
         // Write each file
-        $basePath = config('translator-client.storage_path');
-
         foreach ($grouped as $file => $data) {
-            $path = "{$basePath}/{$locale}/{$file}.php";
-
-            // Create directory if needed
-            if (!File::exists(dirname($path))) {
-                File::makeDirectory(dirname($path), 0755, true);
-            }
-
-            $content = $this->generateFileContent($data, $locale, $file);
-            File::put($path, $content);
+            $this->writeTranslationFile($basePath, $locale, $file, $data);
         }
+    }
+
+    /**
+     * Save translations using v2 format (project/global separation)
+     */
+    protected function saveToFilesV2(string $locale, array $translations, string $basePath): void
+    {
+        $projectTranslations = $translations['project'] ?? [];
+        $globalTranslations = $translations['global'] ?? [];
+
+        // Write project translations (one file per group)
+        foreach ($projectTranslations as $group => $data) {
+            $this->writeTranslationFile($basePath, $locale, $group, $data);
+        }
+
+        // Write global translations to single global.php file
+        if (!empty($globalTranslations)) {
+            $this->writeTranslationFile($basePath, $locale, 'global', $globalTranslations, true);
+        }
+    }
+
+    /**
+     * Write a single translation file
+     */
+    protected function writeTranslationFile(
+        string $basePath,
+        string $locale,
+        string $file,
+        array $data,
+        bool $isGlobal = false
+    ): void {
+        $path = "{$basePath}/{$locale}/{$file}.php";
+
+        // Create directory if needed
+        if (!File::exists(dirname($path))) {
+            File::makeDirectory(dirname($path), 0755, true);
+        }
+
+        $content = $this->generateFileContent($data, $locale, $file, $isGlobal);
+        File::put($path, $content);
     }
 
     /**
      * Generate file content with warning header
      */
-    protected function generateFileContent(array $data, string $locale, string $file): string
+    protected function generateFileContent(array $data, string $locale, string $file, bool $isGlobal = false): string
     {
         $timestamp = now()->toDateTimeString();
         $apiKey = config('translator-client.api_key');
         $projectId = substr($apiKey, 0, 8) . '...';
+        $typeInfo = $isGlobal ? 'Global translations (shared across projects)' : 'Project translations';
 
         return <<<PHP
 <?php
@@ -146,6 +185,7 @@ class SyncCommand extends Command
  *   - Or add translations through the Headwires Translator dashboard
  *
  * Sync Information:
+ *   - Type: {$typeInfo}
  *   - Locale: {$locale}
  *   - File: {$file}.php
  *   - Project: {$projectId}

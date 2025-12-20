@@ -77,6 +77,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sync Strategy
+    |--------------------------------------------------------------------------
+    |
+    | Determines how translations are handled during sync:
+    | - 'overwrite': Replaces local files completely with CDN version (default)
+    | - 'merge': Merges CDN translations with local, preserving local-only keys
+    |            CDN values take precedence for existing keys (recursive merge)
+    |
+    */
+    'sync_strategy' => env('TRANSLATOR_SYNC_STRATEGY', 'overwrite'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Metadata Path
     |--------------------------------------------------------------------------
     |
