@@ -19,8 +19,12 @@ class StaticTranslatorService implements TranslatorServiceInterface
         private ?string $apiKey,
         private string $cdnUrl
     ) {
-        $this->cachePrefix = config('translator-client.cache.prefix', 'translations');
-        $this->langPath = config('translator-client.storage_path', resource_path('lang'));
+        $this->cachePrefix = config('translator-client.cache.prefix', 'translator');
+
+        // Get lang path from first project in config, or use Laravel's default
+        $projects = config('translator-client.projects', []);
+        $defaultProject = $projects[0] ?? null;
+        $this->langPath = $defaultProject['path'] ?? resource_path('lang');
     }
 
     /**
@@ -62,161 +66,33 @@ class StaticTranslatorService implements TranslatorServiceInterface
 
     /**
      * Sync translations (download to files + cache).
+     *
+     * Note: For multi-project support, use `php artisan translator:sync` instead.
+     * This method syncs only the default (first) project for backward compatibility.
      */
     public function sync(array $options = []): void
     {
-        $locales = $options['locales'] ?? config('translator-client.locales', ['en', 'es']);
+        $projects = config('translator-client.projects', []);
+        $defaultProject = $projects[0] ?? null;
 
-        foreach ($locales as $locale) {
-            $this->syncLocale($locale);
-        }
-
-        Log::info('Static translations synced', ['locales' => $locales]);
-    }
-
-    /**
-     * Sync a single locale.
-     */
-    private function syncLocale(string $locale): void
-    {
-        $manifest = $this->fetchManifest();
-        $formatVersion = $manifest['format_version'] ?? 1;
-        $strategy = config('translator-client.sync_strategy', 'overwrite');
-
-        if ($formatVersion >= 2) {
-            $this->syncLocaleV2($locale, $manifest, $strategy);
-        } else {
-            $this->syncLocaleV1($locale, $manifest, $strategy);
-        }
-    }
-
-    /**
-     * Sync locale using v1 format (flat structure).
-     */
-    private function syncLocaleV1(string $locale, array $manifest, string $strategy): void
-    {
-        $groups = $manifest['groups'] ?? [];
-
-        foreach ($groups as $group) {
-            $cdnTranslations = $this->fetchFromCdnV1($locale, $group);
-            $this->writeGroupFile($locale, $group, $cdnTranslations, $strategy);
-        }
-    }
-
-    /**
-     * Sync locale using v2 format (structured with project/global separation).
-     */
-    private function syncLocaleV2(string $locale, array $manifest, string $strategy): void
-    {
-        $data = $this->fetchLocaleData($locale);
-
-        if (empty($data)) {
-            Log::warning('No translation data found for locale', ['locale' => $locale]);
+        if (!$defaultProject) {
+            Log::warning('No projects configured for sync');
             return;
         }
 
-        $projectTranslations = $data['project'] ?? [];
-        $globalTranslations = $data['global'] ?? [];
+        $syncService = app(SyncService::class);
+        $force = $options['force'] ?? false;
 
-        // Write project translations (one file per group)
-        foreach ($projectTranslations as $group => $translations) {
-            $this->writeGroupFile($locale, $group, $translations, $strategy);
-        }
+        $result = $syncService->syncProject(
+            $defaultProject['api_key'],
+            $defaultProject['path'],
+            $force
+        );
 
-        // Write global translations (single global.php file with all groups)
-        if (!empty($globalTranslations)) {
-            $this->writeGlobalFile($locale, $globalTranslations, $strategy);
-        }
-    }
-
-    /**
-     * Write a group file (e.g., auth.php, messages.php).
-     */
-    private function writeGroupFile(string $locale, string $group, array $translations, string $strategy): void
-    {
-        $filePath = "{$this->langPath}/{$locale}/{$group}.php";
-
-        // Merge with existing if strategy is 'merge'
-        if ($strategy === 'merge' && File::exists($filePath)) {
-            $localTranslations = require $filePath;
-            $translations = $this->mergeTranslations($localTranslations, $translations);
-        }
-
-        // Write to file
-        File::ensureDirectoryExists(dirname($filePath));
-        File::put($filePath, "<?php\n\nreturn " . var_export($translations, true) . ";\n");
-
-        // Update cache
-        $cacheKey = $this->getCacheKey($locale, $group);
-        $this->cache->put($cacheKey, $translations, 3600);
-    }
-
-    /**
-     * Write global.php file with all global groups as nested keys.
-     * Structure: ['actions' => [...], 'buttons' => [...], ...]
-     */
-    private function writeGlobalFile(string $locale, array $globalTranslations, string $strategy): void
-    {
-        $filePath = "{$this->langPath}/{$locale}/global.php";
-
-        // Merge with existing if strategy is 'merge'
-        if ($strategy === 'merge' && File::exists($filePath)) {
-            $localTranslations = require $filePath;
-            $globalTranslations = $this->mergeTranslations($localTranslations, $globalTranslations);
-        }
-
-        // Write to file
-        File::ensureDirectoryExists(dirname($filePath));
-        File::put($filePath, "<?php\n\nreturn " . var_export($globalTranslations, true) . ";\n");
-
-        // Update cache for each group within global
-        foreach ($globalTranslations as $group => $translations) {
-            $cacheKey = $this->getCacheKey($locale, "global.{$group}");
-            $this->cache->put($cacheKey, $translations, 3600);
-        }
-    }
-
-    /**
-     * Fetch full locale data from CDN (v2 format).
-     */
-    private function fetchLocaleData(string $locale): array
-    {
-        try {
-            $url = "{$this->cdnUrl}/{$locale}.json";
-            $response = Http::timeout(10)->get($url);
-
-            if ($response->successful()) {
-                return $response->json() ?? [];
-            }
-
-            return [];
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch locale data from CDN', [
-                'locale' => $locale,
-                'error' => $e->getMessage(),
-            ]);
-            return [];
-        }
-    }
-
-    /**
-     * Recursively merge translations. CDN values take precedence.
-     */
-    private function mergeTranslations(array $local, array $cdn): array
-    {
-        $merged = $local;
-
-        foreach ($cdn as $key => $value) {
-            if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
-                // Recursive merge for nested arrays
-                $merged[$key] = $this->mergeTranslations($merged[$key], $value);
-            } else {
-                // CDN value takes precedence
-                $merged[$key] = $value;
-            }
-        }
-
-        return $merged;
+        Log::info('Static translations synced', [
+            'locales' => $result['locales'],
+            'keys' => $result['keys'],
+        ]);
     }
 
     /**

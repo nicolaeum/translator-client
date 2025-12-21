@@ -3,49 +3,43 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | API Key
-    |--------------------------------------------------------------------------
-    |
-    | Your project API key from the Headwires Translator SaaS platform.
-    | Find this in your project settings under "API Key & CDN".
-    |
-    */
-    'api_key' => env('TRANSLATOR_API_KEY'),
-
-    /*
-    |--------------------------------------------------------------------------
     | CDN URL
     |--------------------------------------------------------------------------
     |
     | The base URL for the CDN where translation files are hosted.
+    | This URL should include the path prefix configured in localization-hub.
+    | Example: https://cdn.example.com/p
     |
     */
     'cdn_url' => env('TRANSLATOR_CDN_URL', 'https://cdn.headwires-translator.com'),
 
     /*
     |--------------------------------------------------------------------------
-    | Cache Configuration
+    | Projects
     |--------------------------------------------------------------------------
+    |
+    | Define the projects to sync translations from. Each project has:
+    | - api_key: The project's API key from Headwires Translator
+    | - path: Where to store translation files (absolute path)
+    |
+    | For main app translations, use resource_path('lang').
+    | For package translations, use the vendor path, e.g.:
+    | base_path('vendor/iworking/iworking-boilerplate/resources/lang')
+    |
+    | Locales are automatically fetched from each project's manifest.
+    |
     */
-    'cache' => [
-        'driver' => env('TRANSLATOR_CLIENT_CACHE_DRIVER', 'redis'),
-        'prefix' => env('TRANSLATOR_CLIENT_CACHE_PREFIX', 'translations'),
-
-        // TTL fallback if webhooks fail (default: 5 minutes = 300 seconds)
-        // Set to 0 to rely only on webhooks (cache forever)
-        // Legacy TRANSLATOR_CACHE_TTL still supported
-        'ttl' => (int) env('TRANSLATOR_CLIENT_CACHE_TTL', env('TRANSLATOR_CACHE_TTL', 300)),
+    'projects' => [
+        [
+            'api_key' => env('TRANSLATOR_API_KEY'),
+            'path' => resource_path('lang'),
+        ],
+        // Example: Package translations
+        // [
+        //     'api_key' => env('TRANSLATOR_PACKAGE_API_KEY'),
+        //     'path' => base_path('vendor/vendor-name/package-name/resources/lang'),
+        // ],
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Locales
-    |--------------------------------------------------------------------------
-    |
-    | Comma-separated list of locales to sync from the CDN.
-    |
-    */
-    'locales' => array_filter(explode(',', env('TRANSLATOR_LOCALES', 'en'))),
 
     /*
     |--------------------------------------------------------------------------
@@ -53,27 +47,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | Determines how translations are loaded:
-    | - 'auto': Detects best mode (live for Vapor, can be live anywhere)
-    | - 'live': Cache-based with instant updates (works everywhere)
-    | - 'static': File-based, requires deployments (legacy)
-    |
-    | Legacy values still supported:
-    | - 'file' → mapped to 'static'
-    | - 'cache' → mapped to 'live'
+    | - 'static': File-based, requires sync command or webhook
+    | - 'live': Cache-based with instant updates via webhooks
+    | - 'auto': Detects best mode (live for Vapor/serverless, static otherwise)
     |
     */
-    'mode' => env('TRANSLATOR_CLIENT_MODE', env('TRANSLATOR_STORAGE_MODE', 'auto')),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Storage Path
-    |--------------------------------------------------------------------------
-    |
-    | Base path for storing translation files (file mode only).
-    | Default: resources/lang
-    |
-    */
-    'storage_path' => env('TRANSLATOR_STORAGE_PATH', resource_path('lang')),
+    'mode' => env('TRANSLATOR_CLIENT_MODE', 'static'),
 
     /*
     |--------------------------------------------------------------------------
@@ -90,25 +69,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cache Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Used for live mode and caching manifests.
+    |
+    */
+    'cache' => [
+        'driver' => env('TRANSLATOR_CLIENT_CACHE_DRIVER', 'file'),
+        'prefix' => env('TRANSLATOR_CLIENT_CACHE_PREFIX', 'translator'),
+        'ttl' => (int) env('TRANSLATOR_CLIENT_CACHE_TTL', 3600),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Metadata Path
     |--------------------------------------------------------------------------
     |
     | Path for storing sync metadata (checksums, timestamps).
-    | Default: storage/translator-client
+    | Only used in static mode.
     |
     */
     'metadata_path' => env('TRANSLATOR_METADATA_PATH', storage_path('translator-client')),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Auto Sync
-    |--------------------------------------------------------------------------
-    |
-    | Automatically sync translations on application boot.
-    | Not recommended for production (use deploy scripts instead).
-    |
-    */
-    'auto_sync' => (bool) env('TRANSLATOR_AUTO_SYNC', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -122,48 +104,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Verify Checksums
+    | Webhook Configuration
     |--------------------------------------------------------------------------
     |
-    | Verify file integrity using MD5 checksums after download.
-    |
-    */
-    'verify_checksums' => (bool) env('TRANSLATOR_VERIFY_CHECKSUMS', true),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Webhook Configuration (Auto-Configured)
-    |--------------------------------------------------------------------------
-    |
-    | Webhooks are auto-configured from your API key.
-    | The package automatically:
-    | - Extracts webhook secret from API key
-    | - Registers webhook route at /api/translator/webhook
-    | - Validates signatures
-    | - Clears cache on updates
+    | Webhook endpoint for receiving translation update notifications.
+    | Each project in Headwires Translator should have a webhook configured
+    | pointing to this endpoint. The webhook payload includes the api_key
+    | to identify which project was updated.
     |
     */
     'webhook' => [
-        // Enable webhook auto-registration
         'enabled' => (bool) env('TRANSLATOR_CLIENT_WEBHOOK_ENABLED', true),
-
-        // Route path for webhook endpoint
         'route' => env('TRANSLATOR_CLIENT_WEBHOOK_ROUTE', '/api/translator/webhook'),
-
-        // Pre-warm cache after invalidation
-        'prewarm' => (bool) env('TRANSLATOR_CLIENT_WEBHOOK_PREWARM', true),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Live Mode Configuration
-    |--------------------------------------------------------------------------
-    */
-    'live' => [
-        // Deploy-time warmup (recommended for production)
-        'warmup_on_deploy' => (bool) env('TRANSLATOR_CLIENT_LIVE_WARMUP', true),
-
-        // Aggressive pre-warming (fetches all locales/groups on first request)
-        'aggressive_prewarm' => (bool) env('TRANSLATOR_CLIENT_LIVE_AGGRESSIVE_PREWARM', false),
     ],
 ];

@@ -21,8 +21,7 @@ class TranslatorClientService
             return $this->service->load($locale, $group);
         }
 
-        // Fallback for backward compatibility
-        return $this->fetchLocale($locale)[$group] ?? [];
+        return [];
     }
 
     public function loadAll(string $locale): array
@@ -31,8 +30,7 @@ class TranslatorClientService
             return $this->service->loadAll($locale);
         }
 
-        // Fallback
-        return $this->fetchLocale($locale);
+        return [];
     }
 
     public function sync(array $options = []): void
@@ -67,22 +65,61 @@ class TranslatorClientService
         return 'legacy';
     }
 
-    // ===== Legacy methods for backward compatibility =====
+    // ===== Multi-Project Support =====
 
     /**
-     * Fetch manifest from CDN
+     * Get all configured projects.
      */
-    public function fetchManifest(): array
+    public function getProjects(): array
     {
-        $apiKey = config('translator-client.api_key');
-        $cdnUrl = config('translator-client.cdn_url');
-        $timeout = config('translator-client.http_timeout', 30);
+        return config('translator-client.projects', []);
+    }
 
-        if (empty($apiKey)) {
-            throw new \Exception('TRANSLATOR_API_KEY is not configured');
+    /**
+     * Find a project by its API key.
+     */
+    public function getProjectByApiKey(string $apiKey): ?array
+    {
+        $projects = $this->getProjects();
+
+        foreach ($projects as $project) {
+            if (($project['api_key'] ?? null) === $apiKey) {
+                return $project;
+            }
         }
 
-        $url = "{$cdnUrl}/projects/{$apiKey}/manifest.json";
+        return null;
+    }
+
+    /**
+     * Get the first configured project (for backward compatibility).
+     */
+    public function getDefaultProject(): ?array
+    {
+        $projects = $this->getProjects();
+
+        return $projects[0] ?? null;
+    }
+
+    /**
+     * Hash an API key for filesystem-safe directory names.
+     */
+    public function hashApiKey(string $apiKey): string
+    {
+        return substr(md5($apiKey), 0, 12);
+    }
+
+    // ===== CDN Methods (Project-aware) =====
+
+    /**
+     * Fetch manifest from CDN for a specific project.
+     */
+    public function fetchManifest(string $apiKey): array
+    {
+        $cdnUrl = rtrim(config('translator-client.cdn_url'), '/');
+        $timeout = config('translator-client.http_timeout', 30);
+
+        $url = "{$cdnUrl}/{$apiKey}/manifest.json";
 
         $response = Http::timeout($timeout)
             ->withHeaders(['User-Agent' => 'HeadwiresTranslatorClient/1.0'])
@@ -92,19 +129,18 @@ class TranslatorClientService
             throw new \Exception("Failed to fetch manifest: HTTP {$response->status()}");
         }
 
-        return $response->json();
+        return $response->json() ?? [];
     }
 
     /**
-     * Fetch locale translations from CDN
+     * Fetch locale translations from CDN for a specific project.
      */
-    public function fetchLocale(string $locale, ?string $expectedChecksum = null): array
+    public function fetchLocale(string $apiKey, string $locale): array
     {
-        $apiKey = config('translator-client.api_key');
-        $cdnUrl = config('translator-client.cdn_url');
+        $cdnUrl = rtrim(config('translator-client.cdn_url'), '/');
         $timeout = config('translator-client.http_timeout', 30);
 
-        $url = "{$cdnUrl}/projects/{$apiKey}/{$locale}.json";
+        $url = "{$cdnUrl}/{$apiKey}/{$locale}.json";
 
         $response = Http::timeout($timeout)
             ->withHeaders(['User-Agent' => 'HeadwiresTranslatorClient/1.0'])
@@ -114,24 +150,28 @@ class TranslatorClientService
             throw new \Exception("Failed to fetch {$locale}: HTTP {$response->status()}");
         }
 
-        // Verify checksum if provided and verification enabled
-        if ($expectedChecksum && config('translator-client.verify_checksums', true)) {
-            $actualChecksum = 'md5:' . md5($response->body());
+        return $response->json() ?? [];
+    }
 
-            if ($actualChecksum !== $expectedChecksum) {
-                throw new \Exception("Checksum mismatch for {$locale}. Expected {$expectedChecksum}, got {$actualChecksum}");
-            }
-        }
+    // ===== Metadata Methods (Project-aware) =====
 
-        return $response->json();
+    /**
+     * Get the metadata directory for a project.
+     */
+    public function getProjectMetadataPath(string $apiKey): string
+    {
+        $baseDir = config('translator-client.metadata_path');
+        $projectDir = $this->hashApiKey($apiKey);
+
+        return "{$baseDir}/{$projectDir}";
     }
 
     /**
-     * Get locally stored checksum for a locale
+     * Get locally stored checksum for a locale (project-aware).
      */
-    public function getLocalChecksum(string $locale): ?string
+    public function getLocalChecksum(string $apiKey, string $locale): ?string
     {
-        $metaPath = config('translator-client.metadata_path') . "/{$locale}.meta";
+        $metaPath = $this->getProjectMetadataPath($apiKey) . "/{$locale}.meta.json";
 
         if (!File::exists($metaPath)) {
             return null;
@@ -142,27 +182,25 @@ class TranslatorClientService
 
             return $meta['checksum'] ?? null;
         } catch (\JsonException $e) {
-            // Corrupted metadata file - treat as if not exists
             return null;
         }
     }
 
     /**
-     * Save metadata for a locale
+     * Save metadata for a locale (project-aware).
      */
-    public function saveMetadata(string $locale, array $fileData): void
+    public function saveLocaleMetadata(string $apiKey, string $locale, array $fileData): void
     {
-        $metaDir = config('translator-client.metadata_path');
+        $metaDir = $this->getProjectMetadataPath($apiKey);
 
         if (!File::exists($metaDir)) {
             File::makeDirectory($metaDir, 0755, true);
         }
 
-        $metaPath = "{$metaDir}/{$locale}.meta";
+        $metaPath = "{$metaDir}/{$locale}.meta.json";
         $meta = [
-            'checksum' => $fileData['checksum'],
+            'checksum' => $fileData['checksum'] ?? null,
             'synced_at' => now()->toIso8601String(),
-            'remote_modified' => $fileData['last_modified'] ?? null,
             'size' => $fileData['size'] ?? 0,
         ];
 
@@ -170,29 +208,29 @@ class TranslatorClientService
     }
 
     /**
-     * Update global sync metadata
+     * Save project metadata (manifest info).
      */
-    public function updateGlobalMetadata(array $manifest): void
+    public function saveProjectMetadata(string $apiKey, array $manifest): void
     {
-        $metaDir = config('translator-client.metadata_path');
+        $metaDir = $this->getProjectMetadataPath($apiKey);
 
         if (!File::exists($metaDir)) {
             File::makeDirectory($metaDir, 0755, true);
         }
 
-        File::put("{$metaDir}/last_sync.json", json_encode([
+        File::put("{$metaDir}/manifest.json", json_encode([
             'synced_at' => now()->toIso8601String(),
             'version' => $manifest['project']['version'] ?? null,
-            'locales' => array_keys($manifest['files'] ?? []),
+            'locales' => $manifest['locales'] ?? [],
         ], JSON_PRETTY_PRINT));
     }
 
     /**
-     * Get last sync information
+     * Get last sync information for a project.
      */
-    public function getLastSync(): ?array
+    public function getLastSync(string $apiKey): ?array
     {
-        $metaPath = config('translator-client.metadata_path') . '/last_sync.json';
+        $metaPath = $this->getProjectMetadataPath($apiKey) . '/manifest.json';
 
         if (!File::exists($metaPath)) {
             return null;

@@ -9,6 +9,7 @@ use Headwires\TranslatorClient\Commands\CacheWarmupCommand;
 use Headwires\TranslatorClient\Contracts\TranslatorServiceInterface;
 use Headwires\TranslatorClient\Services\LiveTranslatorService;
 use Headwires\TranslatorClient\Services\StaticTranslatorService;
+use Headwires\TranslatorClient\Services\SyncService;
 use Headwires\TranslatorClient\Support\ModeDetector;
 
 class TranslatorClientServiceProvider extends ServiceProvider
@@ -23,14 +24,22 @@ class TranslatorClientServiceProvider extends ServiceProvider
             'translator-client'
         );
 
+        // Register SyncService as singleton
+        $this->app->singleton(SyncService::class);
+
         // Register the appropriate translator service based on mode
         $this->app->singleton(TranslatorServiceInterface::class, function ($app) {
-            $cache = $app['cache']->store(config('translator-client.cache.driver', 'redis'));
+            $cache = $app['cache']->store(config('translator-client.cache.driver', 'file'));
             $baseCdnUrl = rtrim(config('translator-client.cdn_url'), '/');
-            $apiKey = config('translator-client.api_key');
 
-            // Build full CDN URL with projects path
-            $cdnUrl = "{$baseCdnUrl}/projects/{$apiKey}";
+            // Get the first project's API key for backward compatibility
+            // In multi-project setups, the service is mainly for live mode cache operations
+            $projects = config('translator-client.projects', []);
+            $defaultProject = $projects[0] ?? null;
+            $apiKey = $defaultProject['api_key'] ?? null;
+
+            // Build full CDN URL (prefix is already included in cdn_url)
+            $cdnUrl = $apiKey ? "{$baseCdnUrl}/{$apiKey}" : $baseCdnUrl;
             $apiUrl = $baseCdnUrl;
 
             if (ModeDetector::shouldUseLiveMode()) {
@@ -63,22 +72,22 @@ class TranslatorClientServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Auto-register webhook route if live mode and webhooks enabled
-        if (ModeDetector::shouldUseLiveMode() && config('translator-client.webhook.enabled', true)) {
+        // Auto-register webhook route if webhooks enabled (both static and live mode)
+        if (config('translator-client.webhook.enabled', true)) {
             $this->registerWebhookRoute();
         }
 
-        if ($this->app->runningInConsole()) {
-            $this->publishes([
-                __DIR__.'/../config/translator-client.php' => config_path('translator-client.php'),
-            ], 'translator-client-config');
+        // Publish config
+        $this->publishes([
+            __DIR__.'/../config/translator-client.php' => config_path('translator-client.php'),
+        ], 'translator-client-config');
 
-            $this->commands([
-                SyncCommand::class,
-                StatusCommand::class,
-                CacheWarmupCommand::class,
-            ]);
-        }
+        // Register commands (always, so Artisan::call works from HTTP context)
+        $this->commands([
+            SyncCommand::class,
+            StatusCommand::class,
+            CacheWarmupCommand::class,
+        ]);
     }
 
     /**

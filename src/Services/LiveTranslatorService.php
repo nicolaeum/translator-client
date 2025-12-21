@@ -274,11 +274,16 @@ class LiveTranslatorService implements TranslatorServiceInterface
     }
 
     /**
-     * Get available locales from config.
+     * Get available locales from manifest.
      */
     private function getAvailableLocales(): array
     {
-        return config('translator-client.locales', ['en', 'es']);
+        try {
+            $manifest = $this->fetchManifest();
+            return $manifest['locales'] ?? ['en', 'es'];
+        } catch (\Exception $e) {
+            return ['en', 'es'];
+        }
     }
 
     /**
