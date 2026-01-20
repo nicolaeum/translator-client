@@ -6,6 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use Headwires\TranslatorClient\Commands\SyncCommand;
 use Headwires\TranslatorClient\Commands\StatusCommand;
 use Headwires\TranslatorClient\Commands\CacheWarmupCommand;
+use Headwires\TranslatorClient\Commands\ScanCommand;
 use Headwires\TranslatorClient\Contracts\TranslatorServiceInterface;
 use Headwires\TranslatorClient\Services\LiveTranslatorService;
 use Headwires\TranslatorClient\Services\StaticTranslatorService;
@@ -19,9 +20,16 @@ class TranslatorClientServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // User-configurable settings (published)
         $this->mergeConfigFrom(
             __DIR__.'/../config/translator-client.php',
             'translator-client'
+        );
+
+        // Internal package settings (NOT published)
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/translator-internal.php',
+            'translator-internal'
         );
 
         // Register SyncService as singleton
@@ -30,7 +38,7 @@ class TranslatorClientServiceProvider extends ServiceProvider
         // Register the appropriate translator service based on mode
         $this->app->singleton(TranslatorServiceInterface::class, function ($app) {
             $cache = $app['cache']->store(config('translator-client.cache.driver', 'file'));
-            $baseCdnUrl = rtrim(config('translator-client.cdn_url'), '/');
+            $baseCdnUrl = rtrim(config('translator-internal.cdn_url'), '/');
 
             // Get the first project's API key for backward compatibility
             // In multi-project setups, the service is mainly for live mode cache operations
@@ -87,6 +95,7 @@ class TranslatorClientServiceProvider extends ServiceProvider
             SyncCommand::class,
             StatusCommand::class,
             CacheWarmupCommand::class,
+            ScanCommand::class,
         ]);
     }
 

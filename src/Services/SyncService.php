@@ -15,8 +15,8 @@ class SyncService
 
     public function __construct()
     {
-        $this->cdnUrl = rtrim(config('translator-client.cdn_url'), '/');
-        $this->timeout = config('translator-client.http_timeout', 30);
+        $this->cdnUrl = rtrim(config('translator-internal.cdn_url'), '/');
+        $this->timeout = config('translator-internal.http_timeout', 30);
         $this->strategy = config('translator-client.sync_strategy', 'overwrite');
         $this->metadataPath = config('translator-client.metadata_path');
     }

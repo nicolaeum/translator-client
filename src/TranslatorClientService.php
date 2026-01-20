@@ -116,8 +116,8 @@ class TranslatorClientService
      */
     public function fetchManifest(string $apiKey): array
     {
-        $cdnUrl = rtrim(config('translator-client.cdn_url'), '/');
-        $timeout = config('translator-client.http_timeout', 30);
+        $cdnUrl = rtrim(config('translator-internal.cdn_url'), '/');
+        $timeout = config('translator-internal.http_timeout', 30);
 
         $url = "{$cdnUrl}/{$apiKey}/manifest.json";
 
@@ -137,8 +137,8 @@ class TranslatorClientService
      */
     public function fetchLocale(string $apiKey, string $locale): array
     {
-        $cdnUrl = rtrim(config('translator-client.cdn_url'), '/');
-        $timeout = config('translator-client.http_timeout', 30);
+        $cdnUrl = rtrim(config('translator-internal.cdn_url'), '/');
+        $timeout = config('translator-internal.http_timeout', 30);
 
         $url = "{$cdnUrl}/{$apiKey}/{$locale}.json";
 

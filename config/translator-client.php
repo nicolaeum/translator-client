@@ -3,24 +3,14 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | CDN URL
-    |--------------------------------------------------------------------------
-    |
-    | The base URL for the CDN where translation files are hosted.
-    | This URL should include the path prefix configured in localization-hub.
-    | Example: https://cdn.example.com/p
-    |
-    */
-    'cdn_url' => env('TRANSLATOR_CDN_URL', 'https://cdn.headwires-translator.com'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Projects
     |--------------------------------------------------------------------------
     |
     | Define the projects to sync translations from. Each project has:
+    | - name: A unique identifier for the project (used with --project option)
     | - api_key: The project's API key from Headwires Translator
     | - path: Where to store translation files (absolute path)
+    | - scan_paths: Paths to scan for hardcoded strings (used by translator:scan)
     |
     | For main app translations, use resource_path('lang').
     | For package translations, use the vendor path, e.g.:
@@ -31,13 +21,23 @@ return [
     */
     'projects' => [
         [
+            'name' => env('TRANSLATOR_PROJECT_NAME', 'main'),
             'api_key' => env('TRANSLATOR_API_KEY'),
             'path' => resource_path('lang'),
+            'scan_paths' => [
+                'resources/views',
+                'app',
+            ],
         ],
         // Example: Package translations
         // [
+        //     'name' => 'boilerplate',
         //     'api_key' => env('TRANSLATOR_PACKAGE_API_KEY'),
         //     'path' => base_path('vendor/vendor-name/package-name/resources/lang'),
+        //     'scan_paths' => [
+        //         'vendor/vendor-name/package-name/resources/views',
+        //         'vendor/vendor-name/package-name/src',
+        //     ],
         // ],
     ],
 
@@ -94,16 +94,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | HTTP Timeout
-    |--------------------------------------------------------------------------
-    |
-    | Timeout in seconds for HTTP requests to CDN.
-    |
-    */
-    'http_timeout' => (int) env('TRANSLATOR_HTTP_TIMEOUT', 30),
-
-    /*
-    |--------------------------------------------------------------------------
     | Webhook Configuration
     |--------------------------------------------------------------------------
     |
@@ -116,5 +106,24 @@ return [
     'webhook' => [
         'enabled' => (bool) env('TRANSLATOR_CLIENT_WEBHOOK_ENABLED', true),
         'route' => env('TRANSLATOR_CLIENT_WEBHOOK_ROUTE', '/api/translator/webhook'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scanner Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the translator:scan command that finds hardcoded
+    | strings in your codebase.
+    |
+    */
+    'scanner' => [
+        // Directories to exclude from scanning
+        'excluded_directories' => [
+            'vendor',
+            'node_modules',
+            'storage',
+            'bootstrap/cache',
+        ],
     ],
 ];
