@@ -408,6 +408,59 @@ class ScannerApiClient
     }
 
     /**
+     * Get pending translations ready to apply.
+     *
+     * @return array Approved translations ready to apply to source files
+     *
+     * @throws RequestException
+     */
+    public function getPendingApply(): array
+    {
+        $response = $this->client()
+            ->get('/api/scanner/pending-apply', [
+                'project_id' => $this->apiKey,
+            ]);
+
+        if (! $response->successful()) {
+            throw new \Exception('API Error: '.$response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Mark translations as applied to source files.
+     *
+     * @param  array  $reviewIds  Array of review IDs that were applied
+     * @return array Status of the mark operation
+     *
+     * @throws RequestException
+     */
+    public function markApplied(array $reviewIds): array
+    {
+        $response = $this->client()
+            ->post('/api/scanner/mark-applied', [
+                'project_id' => $this->apiKey,
+                'review_ids' => $reviewIds,
+                'applied_by' => gethostname(),
+            ]);
+
+        if (! $response->successful()) {
+            throw new \Exception('API Error: '.$response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Set the API key for this client.
+     */
+    public function setApiKey(string $apiKey): void
+    {
+        $this->apiKey = $apiKey;
+    }
+
+    /**
      * Get the client package version.
      */
     private function getClientVersion(): string

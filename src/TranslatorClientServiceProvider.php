@@ -2,16 +2,17 @@
 
 namespace Headwires\TranslatorClient;
 
-use Illuminate\Support\ServiceProvider;
-use Headwires\TranslatorClient\Commands\SyncCommand;
-use Headwires\TranslatorClient\Commands\StatusCommand;
+use Headwires\TranslatorClient\Commands\ApplyCommand;
 use Headwires\TranslatorClient\Commands\CacheWarmupCommand;
 use Headwires\TranslatorClient\Commands\ScanCommand;
+use Headwires\TranslatorClient\Commands\StatusCommand;
+use Headwires\TranslatorClient\Commands\SyncCommand;
 use Headwires\TranslatorClient\Contracts\TranslatorServiceInterface;
 use Headwires\TranslatorClient\Services\LiveTranslatorService;
 use Headwires\TranslatorClient\Services\StaticTranslatorService;
 use Headwires\TranslatorClient\Services\SyncService;
 use Headwires\TranslatorClient\Support\ModeDetector;
+use Illuminate\Support\ServiceProvider;
 
 class TranslatorClientServiceProvider extends ServiceProvider
 {
@@ -92,6 +93,7 @@ class TranslatorClientServiceProvider extends ServiceProvider
 
         // Register commands (always, so Artisan::call works from HTTP context)
         $this->commands([
+            ApplyCommand::class,
             SyncCommand::class,
             StatusCommand::class,
             CacheWarmupCommand::class,
