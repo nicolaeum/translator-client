@@ -502,6 +502,16 @@ class ScanCommand extends Command
                 }
             }
 
+            // Show next steps
+            $this->newLine();
+            $this->line('<fg=cyan>┌─────────────────────────────────────────┐</>');
+            $this->line('<fg=cyan>│</> <fg=white;options=bold>Next Steps</>                             <fg=cyan>│</>');
+            $this->line('<fg=cyan>├─────────────────────────────────────────┤</>');
+            $this->line('<fg=cyan>│</> Go to <fg=yellow>Scanner Review</> in your          <fg=cyan>│</>');
+            $this->line('<fg=cyan>│</> Localization Hub dashboard to review  <fg=cyan>│</>');
+            $this->line('<fg=cyan>│</> and approve the suggested translations<fg=cyan>│</>');
+            $this->line('<fg=cyan>└─────────────────────────────────────────┘</>');
+
             return self::SUCCESS;
 
         } catch (\Exception $e) {

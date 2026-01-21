@@ -15,25 +15,31 @@ class ApplyCommand extends Command
 
     protected $description = 'Apply approved scanner translations to source files';
 
-    public function handle(ScannerApiClient $apiClient, FileRewriter $rewriter): int
+    private ?ScannerApiClient $apiClient = null;
+
+    public function handle(FileRewriter $rewriter): int
     {
         $this->components->info('Translator: Apply Approved Changes');
         $this->newLine();
 
-        // Get project
-        $project = $this->option('project') ?? $this->resolveProjectApiKey();
-        if (! $project) {
-            $this->components->error('No project specified. Use --project or set TRANSLATOR_API_KEY');
+        // Get project API key
+        $apiKey = $this->option('project') ?? $this->resolveProjectApiKey();
+        if (! $apiKey) {
+            $this->components->error('No project specified. Use --project or configure a project in translator-client.php');
 
             return self::FAILURE;
         }
 
-        $apiClient->setApiKey($project);
+        // Create API client with the resolved key
+        $this->apiClient = new ScannerApiClient(
+            config('translator-internal.api_url'),
+            $apiKey
+        );
 
         // Fetch pending changes
         $data = null;
-        $this->components->task('Fetching approved translations', function () use ($apiClient, &$data) {
-            $data = $apiClient->getPendingApply();
+        $this->components->task('Fetching approved translations', function () use (&$data) {
+            $data = $this->apiClient->getPendingApply();
 
             return true;
         });
@@ -106,11 +112,20 @@ class ApplyCommand extends Command
             return self::FAILURE;
         }
 
-        // Notify API
+        // Check if any changes were actually made
+        if ($results['total_changes'] === 0) {
+            $this->newLine();
+            $this->components->warn('No changes were applied. The text in the files may not match the stored values.');
+            $this->components->info('Reviews were NOT marked as applied. You can edit them in Scanner Review and try again.');
+
+            return self::SUCCESS;
+        }
+
+        // Notify API only if changes were made
         $this->newLine();
-        $this->components->task('Notifying Localization Hub', function () use ($apiClient, $data) {
+        $this->components->task('Notifying Localization Hub', function () use ($data) {
             $reviewIds = array_column($data['changes'], 'id');
-            $apiClient->markApplied($reviewIds);
+            $this->apiClient->markApplied($reviewIds);
 
             return true;
         });

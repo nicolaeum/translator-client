@@ -36,7 +36,8 @@ class FileRewriter
 
         // Apply changes file by file
         foreach ($byFile as $filePath => $fileChanges) {
-            $absolutePath = base_path($filePath);
+            // Use path as-is if absolute, otherwise resolve from base_path
+            $absolutePath = str_starts_with($filePath, '/') ? $filePath : base_path($filePath);
 
             if (! File::exists($absolutePath)) {
                 $results['files'][$filePath] = [
