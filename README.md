@@ -53,7 +53,6 @@ Add to your `.env` file:
 ```env
 TRANSLATOR_API_KEY=your-40-char-api-key-here
 TRANSLATOR_CDN_URL=https://cdn.headwires-translator.com
-TRANSLATOR_LOCALES=en,es,fr
 TRANSLATOR_STORAGE_MODE=file
 TRANSLATOR_CACHE_TTL=3600
 TRANSLATOR_VERIFY_CHECKSUMS=true
@@ -63,11 +62,12 @@ TRANSLATOR_VERIFY_CHECKSUMS=true
 
 - **TRANSLATOR_API_KEY** (required): Your 40-character API key from Headwires Translator
 - **TRANSLATOR_CDN_URL**: CDN endpoint URL (default: https://cdn.headwires-translator.com)
-- **TRANSLATOR_LOCALES**: Comma-separated list of locale codes to sync (default: en)
 - **TRANSLATOR_STORAGE_MODE**: Storage mode - `file` or `cache` (default: file)
 - **TRANSLATOR_CACHE_TTL**: Cache TTL in seconds when using cache mode (default: 3600)
 - **TRANSLATOR_VERIFY_CHECKSUMS**: Verify checksums after download (default: true)
 - **TRANSLATOR_SYNC_STRATEGY**: How to handle existing translations - `overwrite` or `merge` (default: overwrite)
+
+> **Note:** Locales are automatically detected from your project's manifest - no manual configuration needed.
 
 ## Usage
 
@@ -534,8 +534,8 @@ ls -la resources/lang/en/
 php artisan cache:clear
 php artisan translator:sync
 
-# Verify locale is configured
-grep TRANSLATOR_LOCALES .env
+# Verify project has translations
+php artisan translator:status
 ```
 
 ### Checksum Verification Failures
