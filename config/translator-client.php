@@ -21,8 +21,8 @@ return [
     */
     'projects' => [
         [
-            'name' => env('TRANSLATOR_PROJECT_NAME', 'main'),
-            'api_key' => env('TRANSLATOR_API_KEY'),
+            'name' => env('CLI_TRANSLATOR_PROJECT_NAME', 'main'),
+            'api_key' => env('CLI_TRANSLATOR_API_KEY'),
             'path' => resource_path('lang'),
             'scan_paths' => [
                 'resources/views',
@@ -52,7 +52,7 @@ return [
     | - 'auto': Detects best mode (live for Vapor/serverless, static otherwise)
     |
     */
-    'mode' => env('TRANSLATOR_CLIENT_MODE', 'static'),
+    'mode' => env('CLI_TRANSLATOR_CLIENT_MODE', 'static'),
 
     /*
     |--------------------------------------------------------------------------
@@ -65,7 +65,7 @@ return [
     |            CDN values take precedence for existing keys (recursive merge)
     |
     */
-    'sync_strategy' => env('TRANSLATOR_SYNC_STRATEGY', 'overwrite'),
+    'sync_strategy' => env('CLI_TRANSLATOR_SYNC_STRATEGY', 'overwrite'),
 
     /*
     |--------------------------------------------------------------------------
@@ -76,9 +76,9 @@ return [
     |
     */
     'cache' => [
-        'driver' => env('TRANSLATOR_CLIENT_CACHE_DRIVER', 'file'),
-        'prefix' => env('TRANSLATOR_CLIENT_CACHE_PREFIX', 'translator'),
-        'ttl' => (int) env('TRANSLATOR_CLIENT_CACHE_TTL', 3600),
+        'driver' => env('CLI_TRANSLATOR_CLIENT_CACHE_DRIVER', 'file'),
+        'prefix' => env('CLI_TRANSLATOR_CLIENT_CACHE_PREFIX', 'translator'),
+        'ttl' => (int) env('CLI_TRANSLATOR_CLIENT_CACHE_TTL', 3600),
     ],
 
     /*
@@ -90,7 +90,7 @@ return [
     | Only used in static mode.
     |
     */
-    'metadata_path' => env('TRANSLATOR_METADATA_PATH', storage_path('translator-client')),
+    'metadata_path' => env('CLI_TRANSLATOR_METADATA_PATH', storage_path('translator-client')),
 
     /*
     |--------------------------------------------------------------------------
@@ -104,8 +104,8 @@ return [
     |
     */
     'webhook' => [
-        'enabled' => (bool) env('TRANSLATOR_CLIENT_WEBHOOK_ENABLED', true),
-        'route' => env('TRANSLATOR_CLIENT_WEBHOOK_ROUTE', '/api/translator/webhook'),
+        'enabled' => (bool) env('CLI_TRANSLATOR_CLIENT_WEBHOOK_ENABLED', true),
+        'route' => env('CLI_TRANSLATOR_CLIENT_WEBHOOK_ROUTE', '/api/translator/webhook'),
     ],
 
     /*
