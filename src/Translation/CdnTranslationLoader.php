@@ -34,12 +34,6 @@ class CdnTranslationLoader implements LoaderInterface
             $translations = $this->loadFromCdn($locale, $group);
 
             if (!empty($translations)) {
-                Log::debug('Translation loaded from CDN', [
-                    'locale' => $locale,
-                    'group' => $group,
-                    'keys_count' => count($translations),
-                ]);
-
                 return $translations;
             }
         } catch (\Exception $e) {
