@@ -145,7 +145,19 @@ class LiveTranslatorService implements TranslatorServiceInterface
         } elseif ($locale !== null) {
             // Flush all groups for locale
             $manifest = $this->fetchManifest();
-            $groups = $manifest['groups'] ?? [];
+            $manifestGroups = $manifest['groups'] ?? [];
+
+            // Handle v2 format where groups is {project: [...], global: [...]}
+            $groups = [];
+            if (isset($manifestGroups['project']) || isset($manifestGroups['global'])) {
+                $groups = array_merge(
+                    $manifestGroups['project'] ?? [],
+                    $manifestGroups['global'] ?? []
+                );
+            } else {
+                // v1 format: groups is already an array
+                $groups = $manifestGroups;
+            }
 
             foreach ($groups as $grp) {
                 $cacheKey = $this->getCacheKey($locale, $grp);
@@ -201,6 +213,18 @@ class LiveTranslatorService implements TranslatorServiceInterface
 
             if ($response->successful()) {
                 $data = $response->json();
+
+                // Handle v2 format (has 'project' and/or 'global' keys)
+                if (isset($data['project']) || isset($data['global'])) {
+                    // First check project translations, then global
+                    $projectTranslations = $data['project'][$group] ?? [];
+                    $globalTranslations = $data['global'][$group] ?? [];
+
+                    // Merge: project overrides global
+                    return array_merge($globalTranslations, $projectTranslations);
+                }
+
+                // v1 format fallback
                 return $data[$group] ?? [];
             }
 
