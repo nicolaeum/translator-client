@@ -14,7 +14,7 @@ return [
     |
     | For main app translations, use resource_path('lang').
     | For package translations, use the vendor path, e.g.:
-    | base_path('vendor/iworking/iworking-boilerplate/resources/lang')
+    | base_path('vendor/your-package/resources/lang')
     |
     | Locales are automatically fetched from each project's manifest.
     |
@@ -32,11 +32,11 @@ return [
         // Example: Package translations
         // [
         //     'name' => 'boilerplate',
-        //     'api_key' => env('TRANSLATOR_PACKAGE_API_KEY'),
-        //     'path' => base_path('vendor/vendor-name/package-name/resources/lang'),
+        //     'api_key' => env('CLI_TRANSLATOR_PACKAGE_API_KEY'),
+        //     'path' => base_path('vendor/your-package/resources/lang'),
         //     'scan_paths' => [
-        //         'vendor/vendor-name/package-name/resources/views',
-        //         'vendor/vendor-name/package-name/src',
+        //         'vendor/your-package/resources/views',
+        //         'vendor/your-package/src',
         //     ],
         // ],
     ],
@@ -74,9 +74,13 @@ return [
     |
     | Used for live mode and caching manifests.
     |
+    | By default, the package uses Laravel's default cache store (CACHE_STORE).
+    | Only set CLI_TRANSLATOR_CLIENT_CACHE_DRIVER if you want translations
+    | cached in a different store than the rest of your application.
+    |
     */
     'cache' => [
-        'driver' => env('CLI_TRANSLATOR_CLIENT_CACHE_DRIVER', 'file'),
+        'driver' => env('CLI_TRANSLATOR_CLIENT_CACHE_DRIVER'),
         'prefix' => env('CLI_TRANSLATOR_CLIENT_CACHE_PREFIX', 'translator'),
         'ttl' => (int) env('CLI_TRANSLATOR_CLIENT_CACHE_TTL', 3600),
     ],

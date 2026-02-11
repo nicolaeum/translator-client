@@ -40,7 +40,9 @@ class TranslatorClientServiceProvider extends ServiceProvider
 
         // Register the appropriate translator service based on mode
         $this->app->singleton(TranslatorServiceInterface::class, function ($app) {
-            $cache = $app['cache']->store(config('translator-client.cache.driver', 'file'));
+            // Use configured driver, or fall back to Laravel's default cache store
+            $cacheDriver = config('translator-client.cache.driver') ?? config('cache.default');
+            $cache = $app['cache']->store($cacheDriver);
             $baseCdnUrl = rtrim(config('translator-internal.cdn_url'), '/');
 
             // Get the first project's API key for backward compatibility
