@@ -13,7 +13,7 @@ use Headwires\TranslatorClient\Support\ModeDetector;
 class WebhookController extends Controller
 {
     /**
-     * Handle incoming webhook from localization-hub.
+     * Handle incoming webhook from LangSyncer.
      */
     public function handle(Request $request, TranslatorClientService $translator)
     {

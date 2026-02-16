@@ -18,7 +18,6 @@ class ScanCommand extends Command
                             {--min-confidence=0 : Minimum confidence score to include (0-100)}
                             {--format=table : Output format (table, json, csv)}
                             {--output= : Output file path for results}
-                            {--no-api : Skip API integration, just show local analysis}
                             {--list-projects : List configured projects}
                             {--ai : Use AI to enhance key generation and analysis}
                             {--y|yes : Skip confirmation prompts (useful for CI/automation)}';
@@ -48,19 +47,17 @@ class ScanCommand extends Command
         // Resolve active project from config
         $this->activeProject = $this->resolveProject();
 
-        // Validate project if not in no-api mode
-        if (! $this->option('no-api') && ! $this->option('dry-run')) {
-            if (! $this->activeProject) {
-                $this->error('No project configured. Add projects to translator-client.php config.');
+        // Validate project configuration
+        if (! $this->activeProject) {
+            $this->error('No project configured. Add projects to translator-client.php config.');
 
-                return self::FAILURE;
-            }
+            return self::FAILURE;
+        }
 
-            if (empty($this->activeProject['api_key'])) {
-                $this->error("Project '{$this->activeProject['name']}' has no API key configured.");
+        if (empty($this->activeProject['api_key'])) {
+            $this->error("Project '{$this->activeProject['name']}' has no API key configured.");
 
-                return self::FAILURE;
-            }
+            return self::FAILURE;
         }
 
         $this->info('Starting source translation scanner...');
@@ -105,8 +102,22 @@ class ScanCommand extends Command
             );
         }
 
-        // Display results
-        $this->displayResults($analyzed);
+        // Check scanner access early to limit display for free tier
+        // Always check if we have an API key - free users only see 3 candidates preview
+        $hasScannerAccess = true;
+        if ($this->activeProject && ! empty($this->activeProject['api_key'])) {
+            $hasScannerAccess = $this->checkScannerAccessEarly();
+        }
+
+        // Display results (limited for free tier)
+        $this->displayResults($analyzed, $hasScannerAccess);
+
+        // If free tier without access, show upgrade message and stop
+        if (! $hasScannerAccess) {
+            $this->displayUpgradeMessage(count($analyzed));
+
+            return self::SUCCESS;
+        }
 
         // Output to file if requested
         if ($outputPath = $this->option('output')) {
@@ -114,7 +125,7 @@ class ScanCommand extends Command
         }
 
         // Handle API integration
-        if (! $this->option('dry-run') && ! $this->option('no-api')) {
+        if (! $this->option('dry-run')) {
             return $this->handleApiIntegration($analyzed);
         }
 
@@ -255,9 +266,16 @@ class ScanCommand extends Command
     /**
      * Display results based on format option.
      */
-    private function displayResults(array $analyzed): void
+    private function displayResults(array $analyzed, bool $hasScannerAccess = true): void
     {
         $format = $this->option('format');
+
+        // For free tier, only show limited preview in table format
+        if (! $hasScannerAccess && $format === 'table') {
+            $this->displayLimitedPreview($analyzed);
+
+            return;
+        }
 
         match ($format) {
             'json' => $this->displayJson($analyzed),
@@ -460,6 +478,9 @@ class ScanCommand extends Command
                 'context' => $item['candidate']->context,
             ], $analyzed);
 
+            // Note: Scanner access for non-AI mode is already checked early in handle()
+            // Free tier users never reach this point - they get preview + upgrade message
+
             // If using AI, check quota first and confirm
             if ($useAI) {
                 if (! $this->confirmAIUsage(count($candidates))) {
@@ -469,10 +490,10 @@ class ScanCommand extends Command
                     return self::SUCCESS;
                 }
 
-                $this->info('Sending to Localization Hub API with AI enhancement...');
+                $this->info('Sending to LangSyncer API with AI enhancement...');
                 $response = $this->apiClient->analyzeWithAI($candidates);
             } else {
-                $this->info('Sending to Localization Hub API...');
+                $this->info('Sending to LangSyncer API...');
                 $response = $this->apiClient->analyzeAndStore($candidates);
             }
 
@@ -507,9 +528,9 @@ class ScanCommand extends Command
             $this->line('<fg=cyan>┌─────────────────────────────────────────┐</>');
             $this->line('<fg=cyan>│</> <fg=white;options=bold>Next Steps</>                             <fg=cyan>│</>');
             $this->line('<fg=cyan>├─────────────────────────────────────────┤</>');
-            $this->line('<fg=cyan>│</> Go to <fg=yellow>Scanner Review</> in your          <fg=cyan>│</>');
-            $this->line('<fg=cyan>│</> Localization Hub dashboard to review  <fg=cyan>│</>');
-            $this->line('<fg=cyan>│</> and approve the suggested translations<fg=cyan>│</>');
+            $this->line('<fg=cyan>│</> Go to <fg=yellow>Scanner Review</> in LangSyncer    <fg=cyan>│</>');
+            $this->line('<fg=cyan>│</> to review and approve the suggested   <fg=cyan>│</>');
+            $this->line('<fg=cyan>│</> translations.                         <fg=cyan>│</>');
             $this->line('<fg=cyan>└─────────────────────────────────────────┘</>');
 
             return self::SUCCESS;
@@ -550,38 +571,59 @@ class ScanCommand extends Command
             $est = $estimate['estimate'] ?? [];
             $tier = $estimate['tier'] ?? 'unknown';
 
-            $this->line(sprintf(
-                '<fg=cyan>│</> Tier: <fg=yellow>%s</>%s<fg=cyan>│</>',
-                $tier,
-                str_repeat(' ', max(0, 30 - strlen($tier)))
-            ));
+            $tierQuota = $quota['total'] ?? 0;
+            $tierUsed = $quota['used'] ?? 0;
+            $tierRemaining = $quota['remaining'] ?? 0;
+            $purchasedQuota = $quota['purchased'] ?? 0;
+            $totalRemaining = $quota['total_remaining'] ?? $tierRemaining;
 
             $this->line(sprintf(
-                '<fg=cyan>│</> Current quota: <fg=green>%d</> / %d (%.1f%% used)%s<fg=cyan>│</>',
-                $quota['remaining'] ?? 0,
-                $quota['total'] ?? 0,
-                $quota['percentage_used'] ?? 0,
-                str_repeat(' ', max(0, 5))
+                '<fg=cyan>│</> Tier: <fg=yellow>%-30s</><fg=cyan>│</>',
+                $tier
+            ));
+
+            // Show tier quota
+            $this->line(sprintf(
+                '<fg=cyan>│</> Plan quota: <fg=green>%d</> / %d used%-14s<fg=cyan>│</>',
+                $tierUsed,
+                $tierQuota,
+                ''
+            ));
+
+            // Show purchased quota if any
+            if ($purchasedQuota > 0) {
+                $this->line(sprintf(
+                    '<fg=cyan>│</> Extra quota: <fg=magenta>+%d</> available%-12s<fg=cyan>│</>',
+                    $purchasedQuota,
+                    ''
+                ));
+            }
+
+            // Show total available
+            $this->line(sprintf(
+                '<fg=cyan>│</> Total available: <fg=white;options=bold>%d</>%-20s<fg=cyan>│</>',
+                $totalRemaining,
+                ''
             ));
 
             $this->line('<fg=cyan>├─────────────────────────────────────────┤</>');
 
             $this->line(sprintf(
-                '<fg=cyan>│</> Candidates to process: <fg=white>%d</>%s<fg=cyan>│</>',
+                '<fg=cyan>│</> Candidates to process: <fg=white>%d</>%-15s<fg=cyan>│</>',
                 $candidateCount,
-                str_repeat(' ', max(0, 15 - strlen((string) $candidateCount)))
+                ''
             ));
 
             $willExceed = $est['will_exceed'] ?? false;
             $remainingAfter = $est['remaining_after'] ?? 0;
 
             if ($willExceed) {
-                $this->line('<fg=cyan>│</> <fg=red;options=bold>⚠ WARNING: This will exceed your quota!</>  <fg=cyan>│</>');
+                $this->line('<fg=cyan>│</> <fg=red;options=bold>⚠ WARNING: Exceeds your quota!</>         <fg=cyan>│</>');
             } else {
                 $this->line(sprintf(
-                    '<fg=cyan>│</> Quota after: <fg=green>%d</> remaining%s<fg=cyan>│</>',
+                    '<fg=cyan>│</> After analysis: <fg=green>%d</> remaining%-9s<fg=cyan>│</>',
                     $remainingAfter,
-                    str_repeat(' ', max(0, 16 - strlen((string) $remainingAfter)))
+                    ''
                 ));
             }
 
@@ -729,5 +771,87 @@ class ScanCommand extends Command
         }
 
         return substr($text, 0, $length - 3).'...';
+    }
+
+    /**
+     * Check scanner access early without displaying anything.
+     * Used to determine if we should limit display for free tier.
+     *
+     * @return bool True if user has scanner access, false for free tier
+     */
+    private function checkScannerAccessEarly(): bool
+    {
+        try {
+            $apiClient = new ScannerApiClient(
+                config('translator-internal.api_url'),
+                $this->activeProject['api_key']
+            );
+
+            $estimate = $apiClient->estimateQuota(1);
+
+            return $estimate['has_scanner_access'] ?? true;
+        } catch (\Exception $e) {
+            // If we can't check, assume they have access
+            return true;
+        }
+    }
+
+    /**
+     * Display limited preview for free tier users.
+     * Shows only first 3 candidates as a teaser.
+     */
+    private function displayLimitedPreview(array $analyzed): void
+    {
+        $this->newLine();
+        $this->line('<fg=cyan>┌─────────────────────────────────────────┐</>');
+        $this->line('<fg=cyan>│</> <fg=white;options=bold>Scanner Preview (Free Tier)</>           <fg=cyan>│</>');
+        $this->line('<fg=cyan>└─────────────────────────────────────────┘</>');
+        $this->newLine();
+
+        $total = count($analyzed);
+        $this->line("<fg=yellow>Found {$total} translatable strings. Here's a preview:</>");
+        $this->newLine();
+
+        // Show first 3 candidates
+        $preview = array_slice($analyzed, 0, 3);
+        foreach ($preview as $index => $item) {
+            $candidate = $item['candidate'];
+            $relativePath = $this->getRelativePath($candidate->file);
+            $confidenceColor = match (true) {
+                $item['confidence'] >= 80 => 'green',
+                $item['confidence'] >= 50 => 'yellow',
+                default => 'red',
+            };
+
+            $this->line(sprintf('  <fg=cyan>%d.</> %s:%d', $index + 1, $relativePath, $candidate->line));
+            $this->line(sprintf('     Text: "<fg=white>%s</>"', $this->truncate($candidate->text, 50)));
+            $this->line(sprintf('     Key:  <fg=green>%s</>', $item['key']));
+            $this->line(sprintf('     Confidence: <fg=%s>%d%%</>', $confidenceColor, $item['confidence']));
+            $this->newLine();
+        }
+
+        if ($total > 3) {
+            $remaining = $total - 3;
+            $this->line(sprintf('  <fg=gray>... and %d more candidates</>', $remaining));
+            $this->newLine();
+        }
+    }
+
+    /**
+     * Display upgrade message for free tier users.
+     */
+    private function displayUpgradeMessage(int $totalCandidates): void
+    {
+        $this->line('<fg=yellow>┌─────────────────────────────────────────┐</>');
+        $this->line('<fg=yellow>│</> <fg=white;options=bold>Upgrade to unlock full scanner</>        <fg=yellow>│</>');
+        $this->line('<fg=yellow>├─────────────────────────────────────────┤</>');
+        $this->line('<fg=yellow>│</> • Send all candidates to review       <fg=yellow>│</>');
+        $this->line('<fg=yellow>│</> • AI-powered key generation           <fg=yellow>│</>');
+        $this->line('<fg=yellow>│</> • Auto-apply to source files          <fg=yellow>│</>');
+        $this->line('<fg=yellow>│</>                                         <fg=yellow>│</>');
+        $this->line('<fg=yellow>│</> Visit your Subscription settings      <fg=yellow>│</>');
+        $this->line('<fg=yellow>│</> to upgrade your plan.                 <fg=yellow>│</>');
+        $this->line('<fg=yellow>└─────────────────────────────────────────┘</>');
+        $this->newLine();
     }
 }

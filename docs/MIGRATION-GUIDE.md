@@ -19,7 +19,7 @@ This guide helps you migrate from file-based translations (Static Mode) to cache
 ## Prerequisites
 
 - [ ] Redis or compatible cache (Memcached, DynamoDB)
-- [ ] Localization Hub API key (new format with webhook secret)
+- [ ] LangSyncer API key (new format with webhook secret)
 - [ ] Access to update environment variables
 - [ ] Ability to run `composer dump-autoload`
 
@@ -46,7 +46,7 @@ count($parts); // Should be 4 for new format
 
 **If you have old format, regenerate:**
 
-1. Go to your project settings in Localization Hub
+1. Go to your project settings in LangSyncer
 2. Click "Regenerate API Key"
 3. Copy the new key (format: `lh_proj_...`)
 4. Update `.env` (see Step 2)

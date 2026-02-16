@@ -123,7 +123,7 @@ class ApplyCommand extends Command
 
         // Notify API only if changes were made
         $this->newLine();
-        $this->components->task('Notifying Localization Hub', function () use ($data) {
+        $this->components->task('Notifying LangSyncer', function () use ($data) {
             $reviewIds = array_column($data['changes'], 'id');
             $this->apiClient->markApplied($reviewIds);
 

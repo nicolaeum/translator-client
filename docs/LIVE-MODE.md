@@ -55,7 +55,7 @@ Edit translation → Webhook sent → Cache cleared → Pre-warmed → Translati
                 (cache invalidation)    (translation data)
                          │                    │
 ┌────────────────────────┴────────────────────┴───────────┐
-│            Localization Hub (Server)                     │
+│            LangSyncer (Server)                           │
 │                                                          │
 │  • User edits translation in dashboard                  │
 │  • Webhook dispatched with HMAC signature               │
@@ -412,7 +412,7 @@ Cache::tags(['translations'])->flush(); // If using taggable cache
    \Headwires\TranslatorClient\Support\ModeDetector::getMode(); // Should be 'live'
    ```
 
-4. Check webhook logs on server (localization-hub):
+4. Check webhook logs on server (LangSyncer):
    ```bash
    tail -f storage/logs/laravel.log | grep "Webhook"
    ```
@@ -561,7 +561,7 @@ The package **automatically verifies** signatures. Invalid signatures are reject
 
 **Rotate keys if compromised:**
 
-1. Go to localization-hub project settings
+1. Go to LangSyncer project settings
 2. Click "Regenerate API Key"
 3. Update `.env` on all servers
 4. Deploy
