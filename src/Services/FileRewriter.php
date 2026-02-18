@@ -29,6 +29,7 @@ class FileRewriter
                     'line' => $location['line'],
                     'key' => $change['key'],
                     'value' => $change['value'],
+                    'params' => $change['params'] ?? [],
                     'review_id' => $change['id'],
                 ];
             }
@@ -63,7 +64,12 @@ class FileRewriter
 
                     if (isset($lines[$lineIndex])) {
                         $originalLine = $lines[$lineIndex];
-                        $newLine = $this->replaceLine($originalLine, $change['value'], $change['key']);
+                        $newLine = $this->replaceLine(
+                            $originalLine,
+                            $change['value'],
+                            $change['key'],
+                            $change['params'] ?? []
+                        );
 
                         if ($newLine !== $originalLine) {
                             $lines[$lineIndex] = $newLine;
@@ -98,31 +104,61 @@ class FileRewriter
     /**
      * Replace text in a line with translation function.
      */
-    protected function replaceLine(string $line, string $originalText, string $key): string
+    protected function replaceLine(string $line, string $originalText, string $key, array $params = []): string
     {
         $escaped = preg_quote($originalText, '/');
+
+        // Build the translation helper with or without params
+        $translationHelper = $this->buildTranslationHelper($key, $params);
+        $bladeHelper = $this->buildBladeTranslationHelper($key, $params);
 
         // Replace in HTML content: >Text< becomes >{{ __('key') }}<
         $line = preg_replace(
             '/>('.$escaped.')</',
-            ">{{ __('{$key}') }}<",
+            ">{$bladeHelper}<",
             $line
         );
 
         // Replace in attributes: placeholder="Text" becomes placeholder="{{ __('key') }}"
         $line = preg_replace(
             '/(placeholder|title|alt|aria-label)=["\']'.$escaped.'["\']/',
-            '$1="{{ __(\''.$key.'\') }}"',
+            '$1="'.$bladeHelper.'"',
             $line
         );
 
         // Replace standalone string literals: 'Text' becomes __('key')
         $line = preg_replace(
             '/(["\'])'.$escaped.'\\1(?!\s*=>)/',
-            "__('{$key}')",
+            $translationHelper,
             $line
         );
 
         return $line;
+    }
+
+    /**
+     * Build the PHP translation helper string.
+     * Without params: __('key')
+     * With params: __('key', ['name' => $name])
+     */
+    protected function buildTranslationHelper(string $key, array $params): string
+    {
+        if (empty($params)) {
+            return "__('{$key}')";
+        }
+
+        $paramsArray = collect($params)->map(fn ($p) => "'{$p}' => \${$p}")->implode(', ');
+
+        return "__('{$key}', [{$paramsArray}])";
+    }
+
+    /**
+     * Build the Blade translation helper string.
+     * Without params: {{ __('key') }}
+     * With params: {{ __('key', ['name' => $name]) }}
+     */
+    protected function buildBladeTranslationHelper(string $key, array $params): string
+    {
+        return '{{ '.$this->buildTranslationHelper($key, $params).' }}';
     }
 }

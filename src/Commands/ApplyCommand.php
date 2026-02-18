@@ -66,6 +66,7 @@ class ApplyCommand extends Command
                     'line' => $loc['line'],
                     'value' => $change['value'],
                     'key' => $change['key'],
+                    'params' => $change['params'] ?? [],
                 ];
             }
         }
@@ -73,7 +74,8 @@ class ApplyCommand extends Command
         foreach ($byFile as $file => $changes) {
             $this->line("  <fg=cyan>📄 {$file}</>");
             foreach ($changes as $change) {
-                $this->line("     └─ Line {$change['line']}: \"{$change['value']}\" → <fg=green>__('{$change['key']}')</>");
+                $translationHelper = $this->formatTranslationHelper($change['key'], $change['params']);
+                $this->line("     └─ Line {$change['line']}: \"{$change['value']}\" → <fg=green>{$translationHelper}</>");
             }
             $this->newLine();
         }
@@ -121,9 +123,9 @@ class ApplyCommand extends Command
             return self::SUCCESS;
         }
 
-        // Notify API only if changes were made
+        // Notify API and trigger CDN regeneration
         $this->newLine();
-        $this->components->task('Notifying LangSyncer', function () use ($data) {
+        $this->components->task('Syncing with LangSyncer & regenerating CDN', function () use ($data) {
             $reviewIds = array_column($data['changes'], 'id');
             $this->apiClient->markApplied($reviewIds);
 
@@ -134,6 +136,7 @@ class ApplyCommand extends Command
         $this->newLine();
         $fileCount = count($results['files']);
         $this->components->info("✅ Success! {$results['total_changes']} translations applied to {$fileCount} files");
+        $this->components->info('📡 CDN regeneration queued - translations will be available shortly');
         $this->newLine();
         $this->components->bulletList([
             'Review the changes: <fg=yellow>git diff</>',
@@ -162,5 +165,19 @@ class ApplyCommand extends Command
 
         // Multiple projects - user must specify
         return null;
+    }
+
+    /**
+     * Format translation helper string for display.
+     */
+    private function formatTranslationHelper(string $key, array $params): string
+    {
+        if (empty($params)) {
+            return "__('{$key}')";
+        }
+
+        $paramsArray = collect($params)->map(fn ($p) => "'{$p}' => \${$p}")->implode(', ');
+
+        return "__('{$key}', [{$paramsArray}])";
     }
 }
