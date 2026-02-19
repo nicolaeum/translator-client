@@ -33,7 +33,7 @@ return [
     | Override via TRANSLATOR_CDN_URL in .env for local development.
     |
     */
-    'cdn_url' => env('TRANSLATOR_CDN_URL', 'https://cdn.headwires-translator.com'),
+    'cdn_url' => env('TRANSLATOR_CDN_URL', 'https://langsyncer.com'),
 
     /*
     |--------------------------------------------------------------------------
