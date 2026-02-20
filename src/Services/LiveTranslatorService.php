@@ -63,7 +63,18 @@ class LiveTranslatorService implements TranslatorServiceInterface
     {
         // Fetch manifest to know which groups exist
         $manifest = $this->fetchManifest();
-        $groups = $manifest['groups'] ?? [];
+        $manifestGroups = $manifest['groups'] ?? [];
+
+        // Handle v2 format where groups is {project: [...], global: [...]}
+        if (isset($manifestGroups['project']) || isset($manifestGroups['global'])) {
+            $groups = array_merge(
+                $manifestGroups['project'] ?? [],
+                $manifestGroups['global'] ?? []
+            );
+        } else {
+            // v1 format: groups is already an array
+            $groups = $manifestGroups;
+        }
 
         $translations = [];
         foreach ($groups as $group) {
