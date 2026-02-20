@@ -18,10 +18,10 @@ return [
     | The base URL for the Headwires Translator API. This is used by the
     | scanner to send candidates for analysis and storage.
     |
-    | Override via TRANSLATOR_API_URL in .env for local development.
+    | Override via CLI_TRANSLATOR_API_URL in .env for local development.
     |
     */
-    'api_url' => env('TRANSLATOR_API_URL', 'https://api.headwires-translator.com'),
+    'api_url' => env('CLI_TRANSLATOR_API_URL', 'https://api.langsyncer.com'),
 
     /*
     |--------------------------------------------------------------------------
@@ -30,10 +30,10 @@ return [
     |
     | The base URL for the CDN where translation files are hosted.
     |
-    | Override via TRANSLATOR_CDN_URL in .env for local development.
+    | Override via CLI_TRANSLATOR_CDN_URL in .env for local development.
     |
     */
-    'cdn_url' => env('TRANSLATOR_CDN_URL', 'https://langsyncer.com'),
+    'cdn_url' => env('CLI_TRANSLATOR_CDN_URL', 'https://cdn.langsyncer.com'),
 
     /*
     |--------------------------------------------------------------------------
