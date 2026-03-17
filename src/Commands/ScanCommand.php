@@ -90,17 +90,8 @@ class ScanCommand extends Command
             return self::SUCCESS;
         }
 
-        // Generate keys and calculate confidence
+        // Wrap candidates with basic info (keys will be generated server-side)
         $analyzed = $this->analyzeResults($result->candidates);
-
-        // Filter by minimum confidence
-        $minConfidence = (int) $this->option('min-confidence');
-        if ($minConfidence > 0) {
-            $analyzed = array_filter(
-                $analyzed,
-                fn ($item) => $item['confidence'] >= $minConfidence
-            );
-        }
 
         // Check scanner access early to limit display for free tier
         // Always check if we have an API key - free users only see 3 candidates preview
@@ -109,32 +100,111 @@ class ScanCommand extends Command
             $hasScannerAccess = $this->checkScannerAccessEarly();
         }
 
-        // Display results (limited for free tier)
-        $this->displayResults($analyzed, $hasScannerAccess);
-
-        // If free tier without access, show upgrade message and stop
+        // If free tier without access, show limited preview and stop
         if (! $hasScannerAccess) {
+            $this->displayResults($analyzed, false);
             $this->displayUpgradeMessage(count($analyzed));
 
             return self::SUCCESS;
         }
+
+        // Send raw candidates to server for key generation and filtering
+        try {
+            $this->apiClient = new ScannerApiClient(
+                config('translator-internal.api_url'),
+                $this->activeProject['api_key']
+            );
+
+            $rawCandidates = array_map(fn ($item) => [
+                'text' => $item['candidate']->text,
+                'file' => $item['candidate']->file,
+                'line' => $item['candidate']->line,
+                'element_type' => $item['candidate']->elementType,
+                'file_type' => $item['candidate']->fileType,
+                'context' => $item['candidate']->context,
+                'metadata' => $item['candidate']->metadata ?? [],
+            ], $analyzed);
+
+            $this->info('Sending candidates to server for key generation...');
+            $processedResponse = $this->apiClient->processRaw($rawCandidates);
+
+            $processedCandidates = $processedResponse['processed'] ?? [];
+            $skippedCandidates = $processedResponse['skipped'] ?? [];
+            $stats = $processedResponse['stats'] ?? [];
+
+            // Update analyzed items with server-generated keys and confidence
+            $analyzed = array_map(function ($serverCandidate) {
+                $confidence = $serverCandidate['confidence'] ?? 50;
+
+                return [
+                    'candidate' => (object) [
+                        'file' => $serverCandidate['file'] ?? '',
+                        'line' => $serverCandidate['line'] ?? 0,
+                        'text' => $serverCandidate['text'] ?? '',
+                        'elementType' => $serverCandidate['element_type'] ?? 'unknown',
+                        'fileType' => $serverCandidate['file_type'] ?? 'unknown',
+                        'context' => $serverCandidate['context'] ?? '',
+                        'metadata' => $serverCandidate['metadata'] ?? [],
+                    ],
+                    'key' => $serverCandidate['key'] ?? null,
+                    'value' => $serverCandidate['value'] ?? $serverCandidate['text'] ?? '',
+                    'confidence' => $confidence,
+                    'params' => $serverCandidate['params'] ?? [],
+                    'risk' => match (true) {
+                        $confidence >= 80 => 'safe',
+                        $confidence >= 50 => 'warning',
+                        default => 'danger',
+                    },
+                ];
+            }, $processedCandidates);
+
+        } catch (\Exception $e) {
+            $this->error('API Error during server processing: '.$e->getMessage());
+
+            if ($this->option('verbose')) {
+                $this->line($e->getTraceAsString());
+            }
+
+            return self::FAILURE;
+        }
+
+        // Filter by minimum confidence (now using server-generated confidence)
+        $minConfidence = (int) $this->option('min-confidence');
+        if ($minConfidence > 0) {
+            $analyzed = array_filter(
+                $analyzed,
+                fn ($item) => $item['confidence'] >= $minConfidence
+            );
+        }
+
+        // Sort by confidence descending
+        usort($analyzed, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+
+        // Display results with server-generated keys
+        $this->displayResults($analyzed, $hasScannerAccess);
+
+        // Display server processing stats
+        $this->newLine();
+        $this->info('Server processing stats:');
+        $this->line(sprintf('  Total: %d', $stats['total'] ?? count($rawCandidates)));
+        $this->line(sprintf('  <fg=green>Processed:</> %d', $stats['processed'] ?? count($processedCandidates)));
+        $this->line(sprintf('  <fg=yellow>Skipped (filtered):</> %d', $stats['skipped'] ?? count($skippedCandidates)));
 
         // Output to file if requested
         if ($outputPath = $this->option('output')) {
             $this->outputToFile($analyzed, $outputPath);
         }
 
-        // Handle API integration
-        if (! $this->option('dry-run')) {
-            return $this->handleApiIntegration($analyzed);
-        }
-
+        // Handle dry-run: show results but don't store
         if ($this->option('dry-run')) {
             $this->newLine();
             $this->warn('DRY RUN - No changes sent to API');
+
+            return self::SUCCESS;
         }
 
-        return self::SUCCESS;
+        // Handle API integration (store the server-processed candidates)
+        return $this->handleApiIntegration($analyzed);
     }
 
     /**
@@ -217,34 +287,20 @@ class ScanCommand extends Command
     }
 
     /**
-     * Analyze candidates and generate keys.
+     * Analyze candidates and wrap with basic info.
+     * Keys will be generated server-side via processRaw.
      */
     private function analyzeResults(array $candidates): array
     {
-        $analyzed = [];
-
-        foreach ($candidates as $candidate) {
-            $key = $this->keyGenerator->generate($candidate);
-            $confidence = $this->keyGenerator->calculateConfidence($candidate, $key);
-            $params = $this->keyGenerator->detectParameters($candidate->text);
-            $value = ! empty($params)
-                ? $this->keyGenerator->applyParameters($candidate->text, $params)
-                : $candidate->text;
-
-            $analyzed[] = [
-                'candidate' => $candidate,
-                'key' => $key,
-                'value' => $value,
-                'confidence' => $confidence,
-                'params' => $params,
-                'risk' => $this->assessRisk($candidate, $confidence),
-            ];
-        }
-
-        // Sort by confidence descending
-        usort($analyzed, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
-
-        return $analyzed;
+        // Just wrap candidates with basic info - keys will be generated server-side
+        return array_map(fn ($candidate) => [
+            'candidate' => $candidate,
+            'key' => null,
+            'value' => $candidate->text,
+            'confidence' => 50,
+            'params' => [],
+            'risk' => 'unknown',
+        ], $candidates);
     }
 
     /**
@@ -453,7 +509,8 @@ class ScanCommand extends Command
     }
 
     /**
-     * Handle API integration for sending results.
+     * Handle API integration for storing server-processed results.
+     * Candidates already have server-generated keys from processRaw.
      */
     private function handleApiIntegration(array $analyzed): int
     {
@@ -461,11 +518,7 @@ class ScanCommand extends Command
         $useAI = $this->option('ai');
 
         try {
-            $this->apiClient = new ScannerApiClient(
-                config('translator-internal.api_url'),
-                $this->activeProject['api_key']
-            );
-
+            // Map analyzed items to candidate format for API
             $candidates = array_map(fn ($item) => [
                 'file' => $item['candidate']->file,
                 'line' => $item['candidate']->line,
@@ -478,8 +531,21 @@ class ScanCommand extends Command
                 'context' => $item['candidate']->context,
             ], $analyzed);
 
-            // Note: Scanner access for non-AI mode is already checked early in handle()
-            // Free tier users never reach this point - they get preview + upgrade message
+            if (empty($candidates)) {
+                $this->warn('No candidates to store.');
+
+                return self::SUCCESS;
+            }
+
+            // Ask user if they want to store the results
+            if (! $this->option('yes') && ! $this->confirm(
+                sprintf('Store %d processed candidates?', count($candidates)),
+                true
+            )) {
+                $this->warn('Storage cancelled by user.');
+
+                return self::SUCCESS;
+            }
 
             // If using AI, check quota first and confirm
             if ($useAI) {

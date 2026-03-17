@@ -215,6 +215,82 @@ class ScannerApiClient
     }
 
     /**
+     * Send raw candidates to server for processing.
+     * Server applies intelligent key generation and filtering.
+     *
+     * @param  array  $candidates  Raw candidates without keys
+     * @return array Processed candidates with server-generated keys
+     */
+    public function processRaw(array $candidates): array
+    {
+        if (count($candidates) > $this->chunkSize) {
+            return $this->processRawInChunks($candidates);
+        }
+
+        $response = $this->client()
+            ->post('/api/scanner/process-raw', [
+                'project_id' => $this->apiKey,
+                'candidates' => $candidates,
+            ]);
+
+        if (! $response->successful()) {
+            $this->handleError($response);
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Process raw candidates in chunks for large requests.
+     */
+    private function processRawInChunks(array $candidates): array
+    {
+        $chunks = array_chunk($candidates, $this->chunkSize);
+        $allProcessed = [];
+        $allSkipped = [];
+        $stats = [
+            'total' => 0,
+            'processed' => 0,
+            'skipped' => 0,
+            'high_confidence' => 0,
+            'medium_confidence' => 0,
+            'low_confidence' => 0,
+        ];
+
+        foreach ($chunks as $chunk) {
+            $response = $this->client()
+                ->post('/api/scanner/process-raw', [
+                    'project_id' => $this->apiKey,
+                    'candidates' => $chunk,
+                ]);
+
+            if (! $response->successful()) {
+                $this->handleError($response);
+            }
+
+            $data = $response->json();
+
+            $allProcessed = array_merge($allProcessed, $data['processed'] ?? []);
+            $allSkipped = array_merge($allSkipped, $data['skipped'] ?? []);
+
+            if (isset($data['stats'])) {
+                $stats['total'] += $data['stats']['total'] ?? 0;
+                $stats['processed'] += $data['stats']['processed'] ?? 0;
+                $stats['skipped'] += $data['stats']['skipped'] ?? 0;
+                $stats['high_confidence'] += $data['stats']['high_confidence'] ?? 0;
+                $stats['medium_confidence'] += $data['stats']['medium_confidence'] ?? 0;
+                $stats['low_confidence'] += $data['stats']['low_confidence'] ?? 0;
+            }
+        }
+
+        return [
+            'processed' => $allProcessed,
+            'skipped' => $allSkipped,
+            'stats' => $stats,
+        ];
+    }
+
+    /**
      * Analyze and store translations in one operation.
      *
      * @param  array  $candidates  Array of candidate data with pre-generated keys
