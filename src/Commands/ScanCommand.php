@@ -3,7 +3,6 @@
 namespace Headwires\TranslatorClient\Commands;
 
 use Headwires\TranslatorClient\DTOs\ScanCandidate;
-use Headwires\TranslatorClient\Services\KeyGenerator;
 use Headwires\TranslatorClient\Services\ScannerApiClient;
 use Headwires\TranslatorClient\Services\SourceScanner;
 use Illuminate\Console\Command;
@@ -26,18 +25,14 @@ class ScanCommand extends Command
 
     private SourceScanner $scanner;
 
-    private KeyGenerator $keyGenerator;
-
     private ?ScannerApiClient $apiClient = null;
 
     private ?array $activeProject = null;
 
     public function handle(
         SourceScanner $scanner,
-        KeyGenerator $keyGenerator
     ): int {
         $this->scanner = $scanner;
-        $this->keyGenerator = $keyGenerator;
 
         // Handle --list-projects option
         if ($this->option('list-projects')) {

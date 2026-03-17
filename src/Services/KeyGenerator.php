@@ -5,6 +5,11 @@ namespace Headwires\TranslatorClient\Services;
 use Headwires\TranslatorClient\DTOs\ScanCandidate;
 use Illuminate\Support\Str;
 
+/**
+ * @deprecated Key generation now happens server-side via the processRaw API endpoint.
+ * This class is kept for backwards compatibility but will be removed in v2.0.
+ * Use the server-side KeyGeneratorService instead.
+ */
 class KeyGenerator
 {
     /**
