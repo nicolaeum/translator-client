@@ -164,6 +164,70 @@ Apply approved scanner suggestions and activate translations:
 php artisan translator:apply
 ```
 
+## Scanner Architecture
+
+### Server-Side Intelligence (v1.5+)
+
+The scanner uses a **server-side intelligence** architecture. The client extracts raw string candidates from your codebase and sends them to the LangSyncer server, which applies intelligent key generation, skip pattern filtering, and confidence scoring.
+
+**Why this design?** Key generation heuristics (common action labels, UI element patterns, skip rules) are maintained server-side. This ensures all clients benefit from the latest improvements without requiring package updates, and keeps proprietary detection logic secure.
+
+### How It Works
+
+1. `translator:scan` extracts raw text candidates (string, file path, line number, element type)
+2. Candidates are sent to the server via `POST /api/scanner/process-raw`
+3. The server returns processed keys with confidence scores and filtering results
+
+### API Endpoint: `POST /api/scanner/process-raw`
+
+**Request:**
+
+```json
+{
+  "project_id": "your-api-key",
+  "candidates": [
+    {
+      "text": "Save Changes",
+      "file": "resources/views/posts/edit.blade.php",
+      "line": 15,
+      "element_type": "button",
+      "file_type": "blade"
+    }
+  ]
+}
+```
+
+**Response:**
+
+```json
+{
+  "processed": [
+    {
+      "text": "Save Changes",
+      "key": "posts-edit.buttons.save",
+      "value": "Save Changes",
+      "confidence": 85,
+      "params": [],
+      "file": "resources/views/posts/edit.blade.php",
+      "line": 15
+    }
+  ],
+  "skipped": [],
+  "stats": {
+    "total": 1,
+    "processed": 1,
+    "skipped": 0,
+    "high_confidence": 1,
+    "medium_confidence": 0,
+    "low_confidence": 0
+  }
+}
+```
+
+### Deprecation Notice
+
+The client-side `KeyGenerator` class is **deprecated** and will be removed in v2.0. Key generation is now handled server-side. If you have code that depends on `KeyGenerator`, migrate to the server endpoint.
+
 ## Multi-Project Setup
 
 Configure multiple projects in `config/translator-client.php`:
